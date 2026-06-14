@@ -7,18 +7,18 @@ def setup():
     subprocess.run(
         ["nft", "-f", "/dev/stdin"],
         input=b"""
-table inet portkey {
-    set allowed {
-        type ipv4_addr . inet_service
-        flags dynamic,timeout
-        timeout 1s
-    }
-    chain input {
-        type filter hook input priority filter; policy accept;
-        ip saddr . tcp dport @allowed accept
-    }
-}
-""",
+		table inet portkey {
+		    set allowed {
+		        type ipv4_addr . inet_service
+		        flags dynamic,timeout
+		        timeout 1s
+		    }
+		    chain input {
+		        type filter hook input priority filter; policy accept;
+		        ip saddr . tcp dport @allowed accept
+		    }
+		}
+		""",
         check=True,
     )
 
