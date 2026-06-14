@@ -7,10 +7,11 @@ import sys
 from nacl.exceptions import BadSignatureError
 
 from server.config import load_dotenv, load_pubkey
+from server.nftables import add as nft_add
 from server.nftables import setup as nft_setup
 from server.nftables import teardown as nft_teardown
-from server.nftables import add as nft_add
 from server.packet import parse as parse_packet
+from server.packet import validate_frame
 
 
 def main():
@@ -38,25 +39,11 @@ def main():
                 break
             continue
 
-        if len(addr) >= 3 and addr[2] == 4:
+        result = validate_frame(frame, addr)
+        if result is None:
             continue
 
-        if len(frame) < 14 + 20 + 8:
-            continue
-
-        if frame[12:14] != b"\x08\x00":
-            continue
-
-        if frame[14 + 9] != 17:
-            continue
-
-        ip_hl = (frame[14] & 0x0F) * 4
-
-        if len(frame) < 14 + ip_hl + 8:
-            continue
-
-        src_ip = ".".join(str(b) for b in frame[14 + 12 : 14 + 16])
-        payload = frame[14 + ip_hl + 8 :]
+        src_ip, payload = result
 
         parsed = parse_packet(payload)
         if parsed is None:
