@@ -53,13 +53,19 @@ echo "PORTKEY_PUBKEY=$(xxd -p portkey.pub | tr -d '\n')" > .env
 
 ```bash
 sudo setcap cap_net_raw,cap_net_admin+ep $(which python3)
-python3 portkeyd.py
+python3 server/main.py
+```
+
+Or with the module path:
+
+```bash
+python3 -m server.main
 ```
 
 **Client:**
 
 ```bash
-python3 portkey.py <host> 22 --ttl 30
+python3 client/portkey.py <host> 22 --ttl 30
 ```
 
 ## With Docker

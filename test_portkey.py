@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from nacl.exceptions import BadSignatureError
 from nacl.signing import SigningKey, VerifyKey
 
-from portkeyd import parse_packet
+from server.packet import parse as parse_packet
 
 
 def build_knock(port, ttl, signing_key):
