@@ -20,14 +20,25 @@ ADDR_MIN_LEN = 3
 
 PKT_PORT_SIZE = 2
 PKT_TTL_SIZE = 2
+PKT_TIMESTAMP_SIZE = 8
+PKT_NONCE_SIZE = 16
 PKT_SIG_SIZE = 64
 
 PKT_PORT_START = 0
 PKT_PORT_END = PKT_PORT_START + PKT_PORT_SIZE
+
 PKT_TTL_START = PKT_PORT_END
 PKT_TTL_END = PKT_TTL_START + PKT_TTL_SIZE
-PKT_SIG_START = PKT_TTL_END
+
+PKT_TS_START = PKT_TTL_END
+PKT_TS_END = PKT_TS_START + PKT_TIMESTAMP_SIZE
+
+PKT_NONCE_START = PKT_TS_END
+PKT_NONCE_END = PKT_NONCE_START + PKT_NONCE_SIZE
+
+PKT_SIG_START = PKT_NONCE_END
 PKT_SIG_END = PKT_SIG_START + PKT_SIG_SIZE
+
 PKT_EXPECTED_LEN = PKT_SIG_END
 PKT_PORT_MIN = 1
 PKT_PORT_MAX = 65535
@@ -39,6 +50,8 @@ def parse(payload):
 
     port = struct.unpack("!H", payload[PKT_PORT_START:PKT_PORT_END])[0]
     ttl = struct.unpack("!H", payload[PKT_TTL_START:PKT_TTL_END])[0]
+    timestamp = struct.unpack("!Q", payload[PKT_TS_START:PKT_TS_END])[0]
+    nonce = payload[PKT_NONCE_START:PKT_NONCE_END]
 
     if port < PKT_PORT_MIN or port > PKT_PORT_MAX:
         return None
@@ -46,7 +59,7 @@ def parse(payload):
     if ttl == 0:
         return None
 
-    return port, ttl, payload[PKT_SIG_START:PKT_SIG_END]
+    return port, ttl, timestamp, nonce, payload[PKT_SIG_START:PKT_SIG_END]
 
 
 def validate_frame(frame, addr):

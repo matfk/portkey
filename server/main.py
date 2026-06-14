@@ -3,6 +3,7 @@ import signal
 import socket
 import subprocess
 import sys
+import time
 
 from nacl.exceptions import BadSignatureError
 
@@ -10,8 +11,11 @@ from server.config import load_dotenv, load_pubkey
 from server.nftables import add as nft_add
 from server.nftables import setup as nft_setup
 from server.nftables import teardown as nft_teardown
+from server.packet import PKT_SIG_START
 from server.packet import parse as parse_packet
 from server.packet import validate_frame
+
+MAX_CLOCK_SKEW = 60
 
 
 def main():
@@ -31,6 +35,14 @@ def main():
     sock = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(0x0003))
     print("portkeyd: listening ...", file=sys.stderr)
 
+    nonces: set[bytes] = set()
+
+    def seen_nonce(nonce: bytes) -> bool:
+        if nonce in nonces:
+            return True
+        nonces.add(nonce)
+        return False
+
     while running:
         try:
             frame, addr = sock.recvfrom(65535)
@@ -49,10 +61,17 @@ def main():
         if parsed is None:
             continue
 
-        port, ttl, sig = parsed
+        port, ttl, timestamp, nonce, sig = parsed
+
+        now = time.time()
+        if abs(now - timestamp) > MAX_CLOCK_SKEW:
+            continue
+
+        if seen_nonce(nonce):
+            continue
 
         try:
-            pubkey.verify(payload[:4], sig)
+            pubkey.verify(payload[:PKT_SIG_START], sig)
         except BadSignatureError:
             continue
 
