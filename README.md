@@ -62,6 +62,16 @@ python3 portkeyd.py
 python3 portkey.py <host> 22 --ttl 30
 ```
 
+## With Docker
+
+Build and run the server in a container:
+
+```bash
+docker compose up -d
+```
+
+The container needs host networking and `NET_RAW` + `NET_ADMIN` capabilities to capture raw packets and manage nftables. Both are configured in `docker-compose.yml`.
+
 ## Options
 
 ```
