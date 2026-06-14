@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 import argparse
+import os
 import socket
 import struct
 import sys
+import time
 from pathlib import Path
 
 from nacl.signing import SigningKey
@@ -11,7 +13,9 @@ from nacl.signing import SigningKey
 def knock(host, port, ttl, key_path):
     key = SigningKey(Path(key_path).read_bytes())
 
-    body = struct.pack("!HH", port, ttl)
+    timestamp = time.time()
+    nonce = os.urandom(16)
+    body = struct.pack("!HHQ", port, ttl, timestamp) + nonce
     sig = key.sign(body).signature
 
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
