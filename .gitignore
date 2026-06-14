@@ -1,0 +1,5 @@
+.env
+portkey.key
+portkey.pub
+venv/
+__pycache__/
