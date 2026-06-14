@@ -3,6 +3,7 @@ import subprocess
 
 def setup():
     subprocess.run(["nft", "delete", "table", "inet", "portkey"], capture_output=True)
+
     subprocess.run(
         ["nft", "-f", "/dev/stdin"],
         input=b"""

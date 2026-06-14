@@ -10,8 +10,10 @@ from nacl.signing import SigningKey
 
 def knock(host, port, ttl, key_path):
     key = SigningKey(Path(key_path).read_bytes())
+
     body = struct.pack("!HH", port, ttl)
     sig = key.sign(body).signature
+
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         sock.sendto(body + sig, (host, port))
 
@@ -31,6 +33,7 @@ def main():
     if not 1 <= args.port <= 65535:
         print("error: port must be 1–65535", file=sys.stderr)
         sys.exit(1)
+
     if args.ttl < 1:
         print("error: ttl must be >= 1", file=sys.stderr)
         sys.exit(1)

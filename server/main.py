@@ -43,12 +43,15 @@ def main():
 
         if len(frame) < 14 + 20 + 8:
             continue
+
         if frame[12:14] != b"\x08\x00":
             continue
+
         if frame[14 + 9] != 17:
             continue
 
         ip_hl = (frame[14] & 0x0F) * 4
+
         if len(frame) < 14 + ip_hl + 8:
             continue
 
@@ -60,6 +63,7 @@ def main():
             continue
 
         port, ttl, sig = parsed
+
         try:
             pubkey.verify(payload[:4], sig)
         except BadSignatureError:

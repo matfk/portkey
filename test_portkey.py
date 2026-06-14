@@ -94,18 +94,24 @@ class TestPortkey(unittest.TestCase):
     def test_serialized_key_roundtrip(self):
         raw = bytes(self.sk)
         reloaded = SigningKey(raw)
+
         msg = struct.pack("!HH", 9999, 42)
         sig = reloaded.sign(msg).signature
+
         self.vk.verify(msg, sig)
 
     def test_file_based_keys_match_spec(self):
         pub_bytes = bytes(self.vk)
         priv_bytes = bytes(self.sk)
+
         vk = VerifyKey(pub_bytes)
         self.assertEqual(bytes(vk), pub_bytes)
+
         sk = SigningKey(priv_bytes)
+
         body = struct.pack("!HH", 22, 60)
         sig = sk.sign(body).signature
+
         vk.verify(body, sig)
 
 
