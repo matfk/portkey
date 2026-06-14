@@ -11,9 +11,8 @@ from server.config import load_dotenv, load_pubkey
 from server.nftables import add as nft_add
 from server.nftables import setup as nft_setup
 from server.nftables import teardown as nft_teardown
-from server.packet import PKT_SIG_START
+from server.packet import PKT_SIG_START, NonceSet, validate_frame, verify_timestamp
 from server.packet import parse as parse_packet
-from server.packet import validate_frame
 
 MAX_CLOCK_SKEW = 60
 
@@ -35,13 +34,7 @@ def main():
     sock = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(0x0003))
     print("portkeyd: listening ...", file=sys.stderr)
 
-    nonces: set[bytes] = set()
-
-    def seen_nonce(nonce: bytes) -> bool:
-        if nonce in nonces:
-            return True
-        nonces.add(nonce)
-        return False
+    nonces = NonceSet()
 
     while running:
         try:
@@ -64,10 +57,10 @@ def main():
         port, ttl, timestamp, nonce, sig = parsed
 
         now = time.time()
-        if abs(now - timestamp) > MAX_CLOCK_SKEW:
+        if not verify_timestamp(timestamp, now, MAX_CLOCK_SKEW):
             continue
 
-        if seen_nonce(nonce):
+        if nonces.seen(nonce):
             continue
 
         try:

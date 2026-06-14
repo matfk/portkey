@@ -2,6 +2,7 @@
 import os
 import struct
 import sys
+import time
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -9,11 +10,16 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from nacl.exceptions import BadSignatureError
 from nacl.signing import SigningKey, VerifyKey
 
+from server.packet import PKT_SIG_START, NonceSet, verify_timestamp
 from server.packet import parse as parse_packet
 
 
-def build_knock(port, ttl, signing_key):
-    body = struct.pack("!HH", port, ttl)
+def build_knock(port, ttl, signing_key, timestamp=None, nonce=None):
+    if timestamp is None:
+        timestamp = int(time.time())
+    if nonce is None:
+        nonce = os.urandom(16)
+    body = struct.pack("!HHQ", port, ttl, timestamp) + nonce
     sig = signing_key.sign(body).signature
     return body + sig
 
@@ -26,13 +32,16 @@ class TestPortkey(unittest.TestCase):
 
     def test_valid_knock_verifies(self):
         payload = build_knock(22, 60, self.sk)
-        self.assertEqual(len(payload), 68)
+        self.assertEqual(len(payload), 92)
         parsed = parse_packet(payload)
         self.assertIsNotNone(parsed)
-        port, ttl, sig = parsed
+        port, ttl, timestamp, nonce, sig = parsed
         self.assertEqual(port, 22)
         self.assertEqual(ttl, 60)
-        self.vk.verify(payload[:4], sig)
+        self.assertIsInstance(timestamp, int)
+        self.assertIsInstance(nonce, bytes)
+        self.assertEqual(len(nonce), 16)
+        self.vk.verify(payload[:PKT_SIG_START], sig)
 
     def test_different_ports(self):
         for port in (1, 80, 443, 65535):
@@ -51,25 +60,32 @@ class TestPortkey(unittest.TestCase):
     def test_wrong_key_fails(self):
         other = SigningKey.generate()
         payload = build_knock(22, 60, other)
-        port, ttl, sig = parse_packet(payload)
+        *_rest, sig = parse_packet(payload)
         with self.assertRaises(BadSignatureError):
-            self.vk.verify(payload[:4], sig)
+            self.vk.verify(payload[:PKT_SIG_START], sig)
 
-    def test_replay_is_harmless(self):
+    def test_replay_rejected(self):
         payload = build_knock(443, 120, self.sk)
-        for _ in range(3):
-            parsed = parse_packet(payload)
-            self.vk.verify(payload[:4], parsed[2])
+        parsed = parse_packet(payload)
+        *_, nonce, sig = parsed
+        self.vk.verify(payload[:PKT_SIG_START], sig)
+
+        # Parse again (same nonce) — this should fail because nonce was already seen
+        nonces = NonceSet()
+        self.assertFalse(nonces.seen(nonce))
+        self.assertTrue(nonces.seen(nonce))
 
     def test_bad_signature_rejected(self):
         payload = build_knock(22, 60, self.sk)
-        payload = payload[:4] + b"\x00" * 64
+        payload = payload[:PKT_SIG_START] + b"\x00" * 64
         parsed = parse_packet(payload)
+        self.assertIsNotNone(parsed)
+        *_, sig = parsed
         with self.assertRaises(BadSignatureError):
-            self.vk.verify(payload[:4], parsed[2])
+            self.vk.verify(payload[:PKT_SIG_START], sig)
 
     def test_wrong_length_rejected(self):
-        for length in (0, 1, 4, 67, 69, 100, 200):
+        for length in (0, 1, 4, 67, 91, 93, 100, 200):
             self.assertIsNone(parse_packet(b"A" * length))
 
     def test_port_zero_rejected(self):
@@ -113,6 +129,74 @@ class TestPortkey(unittest.TestCase):
         sig = sk.sign(body).signature
 
         vk.verify(body, sig)
+
+
+class TestTimestamp(unittest.TestCase):
+    def test_exact_now_passes(self):
+        now = 1000000.0
+        self.assertTrue(verify_timestamp(1000000, now, 60))
+
+    def test_within_skew_passes(self):
+        now = 1000000.0
+        self.assertTrue(verify_timestamp(1000059, now, 60))
+        self.assertTrue(verify_timestamp(999941, now, 60))
+
+    def test_at_boundary_passes(self):
+        now = 1000000.0
+        self.assertTrue(verify_timestamp(1000060, now, 60))
+        self.assertTrue(verify_timestamp(999940, now, 60))
+
+    def test_past_fails(self):
+        now = 1000000.0
+        self.assertFalse(verify_timestamp(999939, now, 60))
+
+    def test_future_fails(self):
+        now = 1000000.0
+        self.assertFalse(verify_timestamp(1000061, now, 60))
+
+    def test_custom_skew(self):
+        now = 1000000.0
+        self.assertTrue(verify_timestamp(1000010, now, 10))
+        self.assertFalse(verify_timestamp(1000011, now, 10))
+
+    def test_zero_skew(self):
+        now = 1000000.0
+        self.assertTrue(verify_timestamp(1000000, now, 0))
+        self.assertFalse(verify_timestamp(1000001, now, 0))
+
+
+class TestNonceSet(unittest.TestCase):
+    def test_new_nonce_passes(self):
+        ns = NonceSet()
+        self.assertFalse(ns.seen(b"\x00" * 16))
+
+    def test_same_nonce_twice_fails(self):
+        ns = NonceSet()
+        nonce = os.urandom(16)
+        self.assertFalse(ns.seen(nonce))
+        self.assertTrue(ns.seen(nonce))
+        self.assertTrue(ns.seen(nonce))
+
+    def test_different_nonces_are_independent(self):
+        ns = NonceSet()
+        self.assertFalse(ns.seen(b"a" * 16))
+        self.assertFalse(ns.seen(b"b" * 16))
+        self.assertTrue(ns.seen(b"a" * 16))
+        self.assertFalse(ns.seen(b"c" * 16))
+
+    def test_empty_nonce(self):
+        ns = NonceSet()
+        self.assertFalse(ns.seen(b""))
+        self.assertTrue(ns.seen(b""))
+
+    def test_many_unique_nonces(self):
+        ns = NonceSet()
+        for i in range(1000):
+            nonce = struct.pack("!Q", i) + b"\x00" * 8
+            self.assertFalse(ns.seen(nonce))
+        for i in range(1000):
+            nonce = struct.pack("!Q", i) + b"\x00" * 8
+            self.assertTrue(ns.seen(nonce))
 
 
 if __name__ == "__main__":
