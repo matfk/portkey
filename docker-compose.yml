@@ -1,0 +1,10 @@
+services:
+  portkeyd:
+    build: .
+    network_mode: host
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    environment:
+      - PORTKEY_PUBKEY
+    restart: unless-stopped
