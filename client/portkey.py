@@ -2,12 +2,13 @@
 import argparse
 import os
 import socket
-import struct
 import sys
 import time
 from pathlib import Path
 
 from nacl.signing import SigningKey
+
+from protocol import PKT_BODY_FMT
 
 
 def knock(host, port, ttl, key_path):
@@ -15,7 +16,7 @@ def knock(host, port, ttl, key_path):
 
     timestamp = time.time()
     nonce = os.urandom(16)
-    body = struct.pack("!HHQ", port, ttl, timestamp) + nonce
+    body = PKT_BODY_FMT.pack(port, ttl, int(timestamp), nonce)
     sig = key.sign(body).signature
 
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:

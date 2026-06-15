@@ -10,7 +10,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from nacl.exceptions import BadSignatureError
 from nacl.signing import SigningKey, VerifyKey
 
-from server.packet import PKT_SIG_START, NonceSet, verify_timestamp
+from protocol import PKT_BODY_FMT, PKT_BODY_LEN
+from server.packet import NonceSet, verify_timestamp
 from server.packet import parse as parse_packet
 
 
@@ -19,7 +20,7 @@ def build_knock(port, ttl, signing_key, timestamp=None, nonce=None):
         timestamp = int(time.time())
     if nonce is None:
         nonce = os.urandom(16)
-    body = struct.pack("!HHQ", port, ttl, timestamp) + nonce
+    body = PKT_BODY_FMT.pack(port, ttl, timestamp, nonce)
     sig = signing_key.sign(body).signature
     return body + sig
 
@@ -41,7 +42,7 @@ class TestPortkey(unittest.TestCase):
         self.assertIsInstance(timestamp, int)
         self.assertIsInstance(nonce, bytes)
         self.assertEqual(len(nonce), 16)
-        self.vk.verify(payload[:PKT_SIG_START], sig)
+        self.vk.verify(payload[:PKT_BODY_LEN], sig)
 
     def test_different_ports(self):
         for port in (1, 80, 443, 65535):
@@ -62,13 +63,13 @@ class TestPortkey(unittest.TestCase):
         payload = build_knock(22, 60, other)
         *_rest, sig = parse_packet(payload)
         with self.assertRaises(BadSignatureError):
-            self.vk.verify(payload[:PKT_SIG_START], sig)
+            self.vk.verify(payload[:PKT_BODY_LEN], sig)
 
     def test_replay_rejected(self):
         payload = build_knock(443, 120, self.sk)
         parsed = parse_packet(payload)
         *_, nonce, sig = parsed
-        self.vk.verify(payload[:PKT_SIG_START], sig)
+        self.vk.verify(payload[:PKT_BODY_LEN], sig)
 
         # Parse again (same nonce) — this should fail because nonce was already seen
         nonces = NonceSet()
@@ -77,12 +78,12 @@ class TestPortkey(unittest.TestCase):
 
     def test_bad_signature_rejected(self):
         payload = build_knock(22, 60, self.sk)
-        payload = payload[:PKT_SIG_START] + b"\x00" * 64
+        payload = payload[:PKT_BODY_LEN] + b"\x00" * 64
         parsed = parse_packet(payload)
         self.assertIsNotNone(parsed)
         *_, sig = parsed
         with self.assertRaises(BadSignatureError):
-            self.vk.verify(payload[:PKT_SIG_START], sig)
+            self.vk.verify(payload[:PKT_BODY_LEN], sig)
 
     def test_wrong_length_rejected(self):
         for length in (0, 1, 4, 67, 91, 93, 100, 200):

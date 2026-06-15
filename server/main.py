@@ -7,11 +7,12 @@ import time
 
 from nacl.exceptions import BadSignatureError
 
+from protocol import PKT_BODY_LEN
 from server.config import load_dotenv, load_pubkey
 from server.nftables import add as nft_add
 from server.nftables import setup as nft_setup
 from server.nftables import teardown as nft_teardown
-from server.packet import PKT_SIG_START, NonceSet, validate_frame, verify_timestamp
+from server.packet import NonceSet, validate_frame, verify_timestamp
 from server.packet import parse as parse_packet
 
 MAX_CLOCK_SKEW = 60
@@ -64,7 +65,7 @@ def main():
             continue
 
         try:
-            pubkey.verify(payload[:PKT_SIG_START], sig)
+            pubkey.verify(payload[:PKT_BODY_LEN], sig)
         except BadSignatureError:
             continue
 
