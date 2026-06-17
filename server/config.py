@@ -1,5 +1,6 @@
 import os
 import sys
+import tomllib
 from pathlib import Path
 
 from nacl.signing import VerifyKey
