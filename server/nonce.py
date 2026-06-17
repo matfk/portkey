@@ -12,6 +12,3 @@ class NonceSet:
 			return True
 		Nonce.create(nonce, self.db)
 		return False
-
-	def cleanup(self):
-		Nonce.delete_expired(self.db, self.ttl)
