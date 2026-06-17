@@ -1,11 +1,11 @@
 import struct
 
 # layout:
-#   port      unsigned short (2 bytes)
-#   ttl       unsigned short (2 bytes)
-#   timestamp unsigned long long (8 bytes)
-#   nonce     16 bytes
-#   signature 64 bytes (Ed25519)
+#	port	  unsigned short (2 bytes)
+#	ttl		  unsigned short (2 bytes)
+#	timestamp unsigned long long (8 bytes)
+#	nonce	  16 bytes
+#	signature 64 bytes (Ed25519)
 PKT_BODY_FMT = struct.Struct("!HHQ16s")
 PKT_FMT = struct.Struct("!HHQ16s64s")
 
