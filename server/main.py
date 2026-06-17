@@ -41,56 +41,58 @@ def main():
 		running = False
 
 	signal.signal(signal.SIGTERM, shutdown)
-	signal.signal(signal.SIGINT, shutdown)
 
 	sock = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(0x0003))
 	print("portkeyd: listening ...", file=sys.stderr)
 
-	while running:
-		try:
-			frame, addr = sock.recvfrom(65535)
-		except (OSError, InterruptedError):
-			if not running:
-				break
-			continue
-
-		result = validate_frame(frame, addr)
-		if result is None:
-			continue
-
-		src_ip, payload = result
-
-		parsed = parse_packet(payload)
-		if parsed is None:
-			continue
-
-		port, ttl, timestamp, nonce, sig = parsed
-
-		now = time.time()
-		if not verify_timestamp(timestamp, now, MAX_CLOCK_SKEW):
-			continue
-
-		if nonces.seen(nonce):
-			continue
-
-		body = payload[:PKT_BODY_LEN]
-		valid = False
-		for key in keys:
+	try:
+		while running:
 			try:
-				key.verify(body, sig)
-				valid = True
-				break
-			except BadSignatureError:
+				frame, addr = sock.recvfrom(65535)
+			except (OSError, InterruptedError):
+				if not running:
+					break
 				continue
 
-		if not valid:
-			continue
+			result = validate_frame(frame, addr)
+			if result is None:
+				continue
 
-		try:
-			nft_add(src_ip, port, ttl)
-			print(f"open {src_ip}:{port} for {ttl}s")
-		except subprocess.CalledProcessError as e:
-			print(f"nft error: {e.stderr.decode().strip()}", file=sys.stderr)
+			src_ip, payload = result
+
+			parsed = parse_packet(payload)
+			if parsed is None:
+				continue
+
+			port, ttl, timestamp, nonce, sig = parsed
+
+			now = time.time()
+			if not verify_timestamp(timestamp, now, MAX_CLOCK_SKEW):
+				continue
+
+			if nonces.seen(nonce):
+				continue
+
+			body = payload[:PKT_BODY_LEN]
+			valid = False
+			for key in keys:
+				try:
+					key.verify(body, sig)
+					valid = True
+					break
+				except BadSignatureError:
+					continue
+
+			if not valid:
+				continue
+
+			try:
+				nft_add(src_ip, port, ttl)
+				print(f"open {src_ip}:{port} for {ttl}s")
+			except subprocess.CalledProcessError as e:
+				print(f"nft error: {e.stderr.decode().strip()}", file=sys.stderr)
+	except KeyboardInterrupt:
+		pass
 
 	sock.close()
 	db.close()
