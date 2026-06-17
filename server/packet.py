@@ -87,15 +87,3 @@ def validate_frame(frame, addr):
 
 def verify_timestamp(timestamp, now, max_skew):
     return abs(now - timestamp) <= max_skew
-
-
-class NonceSet:
-    def __init__(self):
-        self.nonces = set()
-
-    def seen(self, nonce):
-        if nonce in self.nonces:
-            return True
-
-        self.nonces.add(nonce)
-        return False

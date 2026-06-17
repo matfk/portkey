@@ -9,20 +9,24 @@ from nacl.exceptions import BadSignatureError
 
 from protocol import PKT_BODY_LEN
 from server.config import load_dotenv, load_pubkey
+from server.database import Database
 from server.nftables import add as nft_add
 from server.nftables import setup as nft_setup
 from server.nftables import teardown as nft_teardown
-from server.packet import NonceSet, validate_frame, verify_timestamp
+from server.nonce import NonceSet
 from server.packet import parse as parse_packet
+from server.packet import validate_frame, verify_timestamp
 
 MAX_CLOCK_SKEW = 60
 
 
 def main():
     load_dotenv()
-    pubkey = load_pubkey()
     nft_setup()
 
+    pubkey = load_pubkey()
+    db = Database("portkey.db")
+    nonces = NonceSet(db, ttl=MAX_CLOCK_SKEW)
     running = True
 
     def shutdown(signum, frame):
@@ -34,8 +38,6 @@ def main():
 
     sock = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(0x0003))
     print("portkeyd: listening ...", file=sys.stderr)
-
-    nonces = NonceSet()
 
     while running:
         try:
@@ -76,6 +78,7 @@ def main():
             print(f"nft error: {e.stderr.decode().strip()}", file=sys.stderr)
 
     sock.close()
+    db.close()
     nft_teardown()
     print("portkeyd: shut down", file=sys.stderr)
 
