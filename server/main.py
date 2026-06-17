@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import os
 import signal
 import socket
 import subprocess
@@ -22,6 +23,10 @@ MAX_CLOCK_SKEW = 60
 
 
 def main():
+	if os.geteuid() != 0:
+		print("portkeyd: must run as root", file=sys.stderr)
+		sys.exit(1)
+
 	nft_setup()
 
 
