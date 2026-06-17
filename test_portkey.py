@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 import os
+import shutil
 import struct
 import sys
+import tempfile
 import time
 import unittest
 
@@ -9,8 +11,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from nacl.exceptions import BadSignatureError
 from nacl.signing import SigningKey, VerifyKey
+from pathlib import Path
 
 from protocol import PKT_BODY_FMT, PKT_BODY_LEN
+from server.config import Config, Server, Key
 from server.database import Database
 from server.nonce import NonceSet
 from server.packet import verify_timestamp
@@ -214,6 +218,107 @@ class TestNonceSet(unittest.TestCase):
 		for i in range(1000):
 			nonce = struct.pack("!Q", i) + b"\x00" * 8
 			self.assertTrue(self.ns.seen(nonce))
+
+
+class TestConfig(unittest.TestCase):
+	def setUp(self):
+		self.tmpdir = tempfile.mkdtemp(prefix="portkey_test_")
+		self.sk = SigningKey.generate()
+		self.vk = self.sk.verify_key
+		self.pub_path = Path(self.tmpdir) / "portkey.pub"
+		self.pub_path.write_bytes(bytes(self.vk))
+
+	def tearDown(self):
+		shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+	def write_toml(self, body):
+		path = Path(self.tmpdir) / "portkey.toml"
+		path.write_text(body)
+		return path
+
+	def test_defaults_when_empty(self):
+		path = self.write_toml("")
+		cfg = Config.load(path)
+		self.assertEqual(cfg.server.database, Path("/etc/portkey/portkey.db"))
+		self.assertEqual(cfg.server.max_clock_skew, 60)
+		self.assertEqual(cfg.keys, [])
+
+	def test_loads_server_section(self):
+		path = self.write_toml(
+			'[server]\n'
+			'database = "/custom/portkey.db"\n'
+			'max_clock_skew = 120\n'
+		)
+		cfg = Config.load(path)
+		self.assertEqual(cfg.server.database, Path("/custom/portkey.db"))
+		self.assertEqual(cfg.server.max_clock_skew, 120)
+
+	def test_loads_keys(self):
+		path = self.write_toml(
+			'[[keys]]\n'
+			f'name = "mathias"\n'
+			f'path = "{self.pub_path}"\n'
+		)
+		cfg = Config.load(path)
+		self.assertEqual(len(cfg.keys), 1)
+		self.assertIsInstance(cfg.keys[0], Key)
+		self.assertEqual(cfg.keys[0].name, "mathias")
+		self.assertEqual(cfg.keys[0].path, self.pub_path)
+
+	def test_verify_keys_returns_pubkeys(self):
+		path = self.write_toml(
+			'[[keys]]\n'
+			'name = "mathias"\n'
+			f'path = "{self.pub_path}"\n'
+		)
+		cfg = Config.load(path)
+		pubkeys = cfg.verify_keys()
+		self.assertEqual(len(pubkeys), 1)
+		self.assertEqual(bytes(pubkeys[0]), bytes(self.vk))
+
+	def test_verify_keys_multiple(self):
+		other_sk = SigningKey.generate()
+		other_pub_path = Path(self.tmpdir) / "other.pub"
+		other_pub_path.write_bytes(bytes(other_sk.verify_key))
+		path = self.write_toml(
+			'[[keys]]\n'
+			'name = "mathias"\n'
+			f'path = "{self.pub_path}"\n'
+			'[[keys]]\n'
+			'name = "other"\n'
+			f'path = "{other_pub_path}"\n'
+		)
+		cfg = Config.load(path)
+		pubkeys = cfg.verify_keys()
+		self.assertEqual(len(pubkeys), 2)
+
+	def test_verify_keys_empty_returns_empty(self):
+		path = self.write_toml("")
+		cfg = Config.load(path)
+		self.assertEqual(cfg.verify_keys(), [])
+
+	def test_verify_keys_exits_on_bad_key(self):
+		bad_path = Path(self.tmpdir) / "bad.pub"
+		bad_path.write_bytes(b"not a valid key")
+		path = self.write_toml(
+			'[[keys]]\n'
+			'name = "bad"\n'
+			f'path = "{bad_path}"\n'
+		)
+		cfg = Config.load(path)
+		with self.assertRaises(SystemExit):
+			cfg.verify_keys()
+
+	def test_verify_keys_exits_on_missing_key_file(self):
+		missing = Path(self.tmpdir) / "missing.pub"
+		path = self.write_toml(
+			'[[keys]]\n'
+			'name = "missing"\n'
+			f'path = "{missing}"\n'
+		)
+		cfg = Config.load(path)
+		with self.assertRaises(SystemExit):
+			cfg.verify_keys()
 
 
 if __name__ == "__main__":
