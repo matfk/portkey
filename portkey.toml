@@ -1,0 +1,7 @@
+[server]
+database = "portkey.db"
+max_clock_skew = 60
+
+[[keys]]
+name = "mathias"
+path = "portkey.pub"

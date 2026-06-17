@@ -1,42 +1,40 @@
-import os
 import sys
 import tomllib
 from pathlib import Path
+from pydantic import BaseModel
 
 from nacl.signing import VerifyKey
 
+class Server(BaseModel):
+	database: Path = Path("/etc/portkey/portkey.db")
+	max_clock_skew: int = 60
 
-def load_dotenv(path=".env"):
-	env_file = Path(path)
-	if not env_file.is_file():
-		env_file = Path(__file__).resolve().parent.parent / ".env"
-	if not env_file.is_file():
-		return
+class Key(BaseModel):
+	name: str
+	path: Path
 
-	for raw in env_file.read_text().splitlines():
-		line = raw.strip()
-		if not line or line.startswith("#") or "=" not in line:
-			continue
+class Config(BaseModel):
+	server: Server = Server()
+	keys: list[Key] = []
 
-		key, _, val = line.partition("=")
-		key, val = key.strip(), val.strip()
+	@classmethod
+	def load(cls, path: Path):
+		if not path.is_file():
+			path = Path(__file__).resolve().parent.parent / "portkey.toml"
+		try:
+			with open(path, "rb") as f:
+				toml = tomllib.load(f)
+		except FileNotFoundError:
+			toml = {}
 
-		if key.startswith("export "):
-			key = key[7:].strip()
-		if len(val) >= 2 and val[0] == val[-1] and val[0] in ('"', "'"):
-			val = val[1:-1]
+		return Config.model_validate(toml)
 
-		os.environ.setdefault(key, val)
-
-
-def load_pubkey():
-	pubkey_hex = os.environ.get("PORTKEY_PUBKEY")
-	if not pubkey_hex:
-		print("PORTKEY_PUBKEY not set", file=sys.stderr)
-		sys.exit(1)
-
-	try:
-		return VerifyKey(bytes.fromhex(pubkey_hex))
-	except Exception as e:
-		print(f"Invalid PORTKEY_PUBKEY: {e}", file=sys.stderr)
-		sys.exit(1)
+	def verify_keys(self):
+		pubkeys = []
+		for key in self.keys:
+			try:
+				pubkeys.append(VerifyKey(key.path.read_bytes()))
+			except Exception as e:
+				print(f"Invalid key '{key.name}': {e}", file=sys.stderr)
+				sys.exit(1)
+		return pubkeys
