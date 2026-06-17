@@ -1,5 +1,5 @@
 # TODO
 
-- [ ] Add toml config
+- [x] Add toml config
 - [ ] Add logging
-- [ ] Support multiple client keys
+- [x] Support multiple client keys
