@@ -10,11 +10,6 @@ class Database:
         cursor.execute(sql, params)
         return cursor
 
-    def executemany(self, sql, params_seq):
-        cursor = self.conn.cursor()
-        cursor.executemany(sql, params_seq)
-        return cursor
-
     def commit(self):
         self.conn.commit()
 
