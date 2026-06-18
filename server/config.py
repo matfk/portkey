@@ -1,9 +1,13 @@
+from typing import Any
+
 import sys
 import tomllib
 from pathlib import Path
 from pydantic import BaseModel
 
 from nacl.signing import VerifyKey
+
+loaded_config: "Config | None" = None
 
 class Server(BaseModel):
 	database: Path = Path("/etc/portkey/portkey.db")
@@ -39,3 +43,12 @@ class Config(BaseModel):
 				print(f"Invalid key '{key.name}': {e}", file=sys.stderr)
 				sys.exit(1)
 		return pubkeys
+
+def initialize_config(path: Path) -> None:
+	global loaded_config
+	loaded_config = Config.load(path)
+
+def __getattr__(name: str) -> Any:
+	if name == "config":
+		return loaded_config
+	raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
