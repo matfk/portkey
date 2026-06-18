@@ -8,6 +8,7 @@ from nacl.signing import VerifyKey
 class Server(BaseModel):
 	database: Path = Path("/etc/portkey/portkey.db")
 	max_clock_skew: int = 60
+	logs: Path = Path("/var/log/portkey")
 
 class Key(BaseModel):
 	name: str
