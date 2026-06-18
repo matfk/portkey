@@ -17,10 +17,10 @@ from server.nftables import teardown as nft_teardown
 from server.nonce import NonceSet
 from server.packet import parse as parse_packet
 from server.packet import validate_frame, verify_timestamp
-from server.config import Config
+import server.config as config
+from server.config import initialize_config
 
 MAX_CLOCK_SKEW = 60
-
 
 def main():
 	if os.geteuid() != 0:
@@ -28,12 +28,11 @@ def main():
 		sys.exit(1)
 
 	nft_setup()
+	initialize_config(Path("portkey.toml"))
 
-
-	config = Config.load(Path("portkey.toml"))
-	keys = config.verify_keys()
-	db = Database(config.server.database)
-	nonces = NonceSet(db, ttl=config.server.max_clock_skew)
+	keys = config.config.verify_keys()
+	db = Database(config.config.server.database)
+	nonces = NonceSet(db, ttl=config.config.server.max_clock_skew)
 	running = True
 
 	def shutdown(signum, frame):
