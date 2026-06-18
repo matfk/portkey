@@ -1,5 +1,6 @@
 [server]
 database = "portkey.db"
+logs = "logs"
 max_clock_skew = 60
 
 [[keys]]
