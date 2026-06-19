@@ -1,7 +1,16 @@
 [server]
 database = "portkey.db"
-logs = "logs"
 max_clock_skew = 60
+max_ttl = 86400
+cleanup_interval = 60
+logs = "logs"
+health_socket = "/var/run/portkey/health.sock"
+nft_binary = "nft"
+user = "nobody"
+group = "nogroup"
+
+[logging]
+level = "INFO"
 
 [[keys]]
 name = "mathias"
