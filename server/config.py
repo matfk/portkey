@@ -30,7 +30,7 @@ class Key(BaseModel):
     path: Path
 
 
-class LoggingConfig(BaseModel):
+class Logging(BaseModel):
     level: str = "INFO"
     format: str = "%(asctime)s %(levelname)s %(name)s %(message)s"
     datefmt: str = "%Y-%m-%dT%H:%M:%S"
@@ -39,7 +39,7 @@ class LoggingConfig(BaseModel):
 class Config(BaseModel):
     server: Server = Server()
     keys: list[Key] = []
-    logging: LoggingConfig = LoggingConfig()
+    logging: Logging = Logging()
 
     @classmethod
     def load(cls, path: Path) -> Config:
