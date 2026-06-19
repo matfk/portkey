@@ -4,4 +4,9 @@ portkey.pub
 venv/
 __pycache__/
 portkey.db
+portkey.db-wal
+portkey.db-shm
 logs/
+*.log
+*.log.*
+/var/
