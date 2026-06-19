@@ -5,11 +5,8 @@ services:
     cap_add:
       - NET_RAW
       - NET_ADMIN
-    environment:
-      - PORTKEY_PUBKEY
     volumes:
-      - ./portkey.toml:/opt/portkey/portkey.toml:ro
-      - ./portkey.pub:/opt/portkey/portkey.pub:ro
+      - ./keys:/etc/portkey/keys:ro
       - portkey_data:/etc/portkey
     restart: unless-stopped
     stop_grace_period: 10s

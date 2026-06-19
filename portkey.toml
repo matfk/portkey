@@ -1,15 +1,11 @@
 [server]
-database = "portkey.db"
+database = "/etc/portkey/portkey.db"
 max_clock_skew = 60
 max_ttl = 86400
 cleanup_interval = 60
-logs = "logs"
+logs = "/var/log/portkey"
 health_socket = "/var/run/portkey/health.sock"
 nft_binary = "nft"
 
 [logging]
 level = "INFO"
-
-[[keys]]
-name = "mathias"
-path = "portkey.pub"

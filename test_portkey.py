@@ -296,7 +296,7 @@ class TestConfig(unittest.TestCase):
 		cfg = Config.load(path)
 		self.assertEqual(cfg.verify_keys(), [])
 
-	def test_verify_keys_exits_on_bad_key(self):
+	def test_verify_keys_skips_bad_key(self):
 		bad_path = Path(self.tmpdir) / "bad.pub"
 		bad_path.write_bytes(b"not a valid key")
 		path = self.write_toml(
@@ -305,10 +305,10 @@ class TestConfig(unittest.TestCase):
 			f'path = "{bad_path}"\n'
 		)
 		cfg = Config.load(path)
-		with self.assertRaises(SystemExit):
-			cfg.verify_keys()
+		keys = cfg.verify_keys()
+		self.assertEqual(keys, [])
 
-	def test_verify_keys_exits_on_missing_key_file(self):
+	def test_verify_keys_skips_missing_key_file(self):
 		missing = Path(self.tmpdir) / "missing.pub"
 		path = self.write_toml(
 			'[[keys]]\n'
@@ -316,8 +316,8 @@ class TestConfig(unittest.TestCase):
 			f'path = "{missing}"\n'
 		)
 		cfg = Config.load(path)
-		with self.assertRaises(SystemExit):
-			cfg.verify_keys()
+		keys = cfg.verify_keys()
+		self.assertEqual(keys, [])
 
 
 if __name__ == "__main__":

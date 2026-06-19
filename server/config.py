@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import sys
 import tomllib
 from pathlib import Path
 
@@ -57,8 +56,7 @@ class Config(BaseModel):
             try:
                 pubkeys.append(VerifyKey(key.path.read_bytes()))
             except Exception as e:
-                logger.critical("Invalid key '%s': %s", key.name, e)
-                sys.exit(1)
+                logger.error("Invalid key '%s' from %s: %s", key.name, key.path, e)
             else:
                 logger.info("Loaded key '%s' from %s", key.name, key.path)
         return pubkeys

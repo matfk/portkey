@@ -103,8 +103,7 @@ def main() -> None:
 
     keys = config.verify_keys()
     if not keys:
-        logger.critical("No valid keys configured. refused")
-        sys.exit(1)
+        logger.warning("No valid keys loaded")
 
     nft_setup(binary=config.server.nft_binary)
     atexit.register(nft_teardown, binary=config.server.nft_binary)
