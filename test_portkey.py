@@ -77,7 +77,7 @@ class TestPortkey(unittest.TestCase):
 		*_, nonce, sig = parsed
 		self.vk.verify(payload[:PKT_BODY_LEN], sig)
 
-		# Parse again (same nonce) — this should fail because nonce was already seen
+		# Parse again (same nonce); this should fail because nonce was already seen
 		db_path = f"/tmp/portkey_test_{os.getpid()}_replay.db"
 		if os.path.exists(db_path):
 			os.remove(db_path)
