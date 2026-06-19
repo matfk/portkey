@@ -21,8 +21,7 @@ class Server(BaseModel):
     logs: Path = Path("/var/log/portkey")
     health_socket: Path = Path("/var/run/portkey/health.sock")
     nft_binary: str = "nft"
-    user: str | None = Field(default="nobody")
-    group: str | None = Field(default="nogroup")
+
 
 
 class Key(BaseModel):

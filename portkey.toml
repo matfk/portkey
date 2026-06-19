@@ -6,8 +6,6 @@ cleanup_interval = 60
 logs = "logs"
 health_socket = "/var/run/portkey/health.sock"
 nft_binary = "nft"
-user = "nobody"
-group = "nogroup"
 
 [logging]
 level = "INFO"

@@ -11,14 +11,11 @@ import socket
 import sys
 import threading
 import time
-import grp
-import pwd
 from pathlib import Path
 
 from nacl.exceptions import BadSignatureError
 
 from protocol import PKT_BODY_LEN
-from server.caps import drop_privileges
 from server.config import Config, get_config, initialize_config, validate_only
 from server.database import Database
 from server.logging import setup_logging
@@ -63,6 +60,7 @@ def health_listener(sock_path: Path, stop_event: threading.Event) -> None:
         sock_path.unlink()
     except OSError:
         pass
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="portkeyd. port-knocking daemon")
@@ -124,15 +122,6 @@ def main() -> None:
     logger.info("Raw AF_PACKET socket open")
 
     config.server.health_socket.parent.mkdir(parents=True, exist_ok=True)
-
-    try:
-        if config.server.user and config.server.group:
-            uid = pwd.getpwnam(config.server.user).pw_uid
-            gid = grp.getgrnam(config.server.group).gr_gid
-            os.chown(config.server.health_socket.parent, uid, gid)
-            drop_privileges(config.server.user, config.server.group)
-    except Exception:
-        logger.exception("Privilege drop failed. continuing")
 
     stop_health = threading.Event()
 
