@@ -1,8 +1,5 @@
 import time
 
-from server.database import Database
-
-
 class Nonce:
     TABLE = "nonces"
 
@@ -16,6 +13,10 @@ class Nonce:
         db.execute(
             f"CREATE TABLE IF NOT EXISTS {cls.TABLE} "
             f"(nonce BLOB PRIMARY KEY, seen_at REAL)"
+        )
+        db.execute(
+            f"CREATE INDEX IF NOT EXISTS idx_{cls.TABLE}_seen_at "
+            f"ON {cls.TABLE}(seen_at)"
         )
         db.commit()
 
@@ -38,8 +39,9 @@ class Nonce:
     @classmethod
     def delete_expired(cls, db, ttl):
         cutoff = time.time() - ttl
-        db.execute(f"DELETE FROM {cls.TABLE} WHERE seen_at < ?", (cutoff,))
+        cursor = db.execute(f"DELETE FROM {cls.TABLE} WHERE seen_at < ?", (cutoff,))
         db.commit()
+        return cursor.rowcount
 
     def delete(self):
         self.db.execute(f"DELETE FROM {self.TABLE} WHERE nonce = ?", (self.value,))
