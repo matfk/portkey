@@ -7,4 +7,18 @@ services:
       - NET_ADMIN
     environment:
       - PORTKEY_PUBKEY
+    volumes:
+      - ./portkey.toml:/opt/portkey/portkey.toml:ro
+      - ./portkey.pub:/opt/portkey/portkey.pub:ro
+      - portkey_data:/etc/portkey
     restart: unless-stopped
+    stop_grace_period: 10s
+    healthcheck:
+      test: ["CMD-SHELL", "echo | nc -U /var/run/portkey/health.sock || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  portkey_data:

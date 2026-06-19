@@ -1,7 +1,18 @@
 FROM python:3-alpine
+RUN apk add --no-cache nftables
 
-RUN pip install --no-cache-dir pynacl
+RUN mkdir -p /etc/portkey /var/run/portkey /var/log/portkey && \
+    chown nobody:nogroup /var/run/portkey /var/log/portkey
 
-COPY server/ /opt/portkey/server/
+COPY requirements.txt /opt/portkey/
+RUN pip install --no-cache-dir -r /opt/portkey/requirements.txt
 
-ENTRYPOINT ["python3", "-m", "server.main"]
+COPY server/   /opt/portkey/server/
+COPY protocol.py /opt/portkey/
+COPY portkey.toml /opt/portkey/
+
+ENV PORTKEY_CONFIG=/opt/portkey/portkey.toml
+
+WORKDIR /opt/portkey
+
+ENTRYPOINT ["python3", "-m", "server.main", "--config", "/opt/portkey/portkey.toml"]
