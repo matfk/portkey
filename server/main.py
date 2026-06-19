@@ -1,103 +1,230 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
+
+from __future__ import annotations
+
+import atexit
+import argparse
+import logging
 import os
 import signal
 import socket
-import subprocess
 import sys
+import threading
 import time
-
-from nacl.exceptions import BadSignatureError
+import grp
+import pwd
 from pathlib import Path
 
+from nacl.exceptions import BadSignatureError
+
 from protocol import PKT_BODY_LEN
+from server.caps import drop_privileges
+from server.config import Config, get_config, initialize_config, validate_only
 from server.database import Database
+from server.logging import setup_logging
 from server.nftables import add as nft_add
 from server.nftables import setup as nft_setup
 from server.nftables import teardown as nft_teardown
 from server.nonce import NonceSet
 from server.packet import parse as parse_packet
 from server.packet import validate_frame, verify_timestamp
-import server.config as config
-from server.config import initialize_config
 
-MAX_CLOCK_SKEW = 60
+logger = logging.getLogger("portkey.main")
 
-def main():
-	if os.geteuid() != 0:
-		print("portkeyd: must run as root", file=sys.stderr)
-		sys.exit(1)
 
-	nft_setup()
-	initialize_config(Path("portkey.toml"))
+def health_listener(sock_path: Path, stop_event: threading.Event) -> None:
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        sock_path.unlink()
+    except FileNotFoundError:
+        pass
 
-	keys = config.config.verify_keys()
-	db = Database(config.config.server.database)
-	nonces = NonceSet(db, ttl=config.config.server.max_clock_skew)
-	running = True
+    sock.bind(str(sock_path))
+    sock.listen(8)
+    sock.settimeout(1.0)
+    logger.info("Health socket listening on %s", sock_path)
 
-	def shutdown(signum, frame):
-		nonlocal running
-		running = False
+    while not stop_event.is_set():
+        try:
+            conn, _ = sock.accept()
+        except socket.timeout:
+            continue
+        except OSError:
+            break
+        try:
+            conn.sendall(b"OK\n")
+        except OSError:
+            pass
+        finally:
+            conn.close()
 
-	signal.signal(signal.SIGTERM, shutdown)
+    sock.close()
+    try:
+        sock_path.unlink()
+    except OSError:
+        pass
 
-	sock = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(0x0003))
-	print("portkeyd: listening ...", file=sys.stderr)
 
-	try:
-		while running:
-			try:
-				frame, addr = sock.recvfrom(65535)
-			except (OSError, InterruptedError):
-				if not running:
-					break
-				continue
+def main() -> None:
+    p = argparse.ArgumentParser(description="portkeyd. port-knocking daemon")
+    p.add_argument(
+        "--config",
+        type=Path,
+        default=Path("portkey.toml"),
+        help="Path to TOML configuration file (default: portkey.toml)",
+    )
+    p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Validate configuration and exit without starting the daemon",
+    )
+    args = p.parse_args()
 
-			result = validate_frame(frame, addr)
-			if result is None:
-				continue
+    if args.dry_run:
+        ok = validate_only(args.config)
+        sys.exit(0 if ok else 1)
 
-			src_ip, payload = result
+    if os.geteuid() != 0:
+        print("portkeyd: must run as root or CAP_NET_RAW + CAP_NET_ADMIN",
+              file=sys.stderr)
+        sys.exit(1)
 
-			parsed = parse_packet(payload)
-			if parsed is None:
-				continue
+    try:
+        initialize_config(args.config)
+    except Exception as exc:
+        print(f"portkeyd: failed to load config: {exc}", file=sys.stderr)
+        sys.exit(1)
 
-			port, ttl, timestamp, nonce, sig = parsed
+    config = get_config()
 
-			now = time.time()
-			if not verify_timestamp(timestamp, now, MAX_CLOCK_SKEW):
-				continue
+    setup_logging(config)
+    logger.info("portkeyd starting (pid=%d, config=%s)", os.getpid(), args.config)
 
-			if nonces.seen(nonce):
-				continue
+    keys = config.verify_keys()
+    if not keys:
+        logger.critical("No valid keys configured. refused")
+        sys.exit(1)
 
-			body = payload[:PKT_BODY_LEN]
-			valid = False
-			for key in keys:
-				try:
-					key.verify(body, sig)
-					valid = True
-					break
-				except BadSignatureError:
-					continue
+    nft_setup(binary=config.server.nft_binary)
+    atexit.register(nft_teardown, binary=config.server.nft_binary)
 
-			if not valid:
-				continue
+    db = Database(config.server.database)
+    atexit.register(db.close)
 
-			try:
-				nft_add(src_ip, port, ttl)
-				print(f"open {src_ip}:{port} for {ttl}s")
-			except subprocess.CalledProcessError as e:
-				print(f"nft error: {e.stderr.decode().strip()}", file=sys.stderr)
-	except KeyboardInterrupt:
-		pass
+    nonces = NonceSet(db, ttl=config.server.max_clock_skew)
+    nonces.start_cleanup_loop(interval=config.server.cleanup_interval)
 
-	sock.close()
-	db.close()
-	nft_teardown()
-	print("portkeyd: shut down", file=sys.stderr)
+    sock = socket.socket(
+        socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(0x0003)
+    )
+    atexit.register(sock.close)
+    logger.info("Raw AF_PACKET socket open")
+
+    config.server.health_socket.parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        if config.server.user and config.server.group:
+            uid = pwd.getpwnam(config.server.user).pw_uid
+            gid = grp.getgrnam(config.server.group).gr_gid
+            os.chown(config.server.health_socket.parent, uid, gid)
+            drop_privileges(config.server.user, config.server.group)
+    except Exception:
+        logger.exception("Privilege drop failed. continuing")
+
+    stop_health = threading.Event()
+
+    def shutdown_health():
+        stop_health.set()
+
+    health_thread = threading.Thread(
+        target=health_listener,
+        args=(config.server.health_socket, stop_health),
+        daemon=True,
+        name="health",
+    )
+    health_thread.start()
+    atexit.register(shutdown_health)
+
+    running = True
+
+    def shutdown(signum, frame):
+        nonlocal running
+        logger.info("Received signal %d, shutting down", signum)
+        running = False
+
+    signal.signal(signal.SIGTERM, shutdown)
+    signal.signal(signal.SIGINT, shutdown)
+
+    max_skew = config.server.max_clock_skew
+    max_ttl = config.server.max_ttl
+    nft_bin = config.server.nft_binary
+
+    knock_count = 0
+    accept_count = 0
+
+    logger.info("portkeyd listening (max_skew=%ds, max_ttl=%ds)", max_skew, max_ttl)
+
+    try:
+        while running:
+            try:
+                frame, addr = sock.recvfrom(65535)
+            except (OSError, InterruptedError):
+                if not running:
+                    break
+                continue
+
+            result = validate_frame(frame, addr)
+            if result is None:
+                continue
+            src_ip, payload = result
+
+            parsed = parse_packet(payload)
+            if parsed is None:
+                continue
+            port, ttl, timestamp, nonce, sig = parsed
+
+            knock_count += 1
+
+            if ttl > max_ttl:
+                logger.debug("TTL %d exceeds max %d. capping", ttl, max_ttl)
+                ttl = max_ttl
+
+            now = time.time()
+            if not verify_timestamp(timestamp, now, max_skew):
+                logger.debug("Timestamp skew too large from %s (diff=%ds)",
+                             src_ip, abs(now - timestamp))
+                continue
+
+            if nonces.seen(nonce):
+                logger.debug("Replay detected from %s", src_ip)
+                continue
+
+            body = payload[:PKT_BODY_LEN]
+            valid = False
+            for key in keys:
+                try:
+                    key.verify(body, sig)
+                    valid = True
+                    break
+                except BadSignatureError:
+                    continue
+
+            if not valid:
+                logger.debug("Invalid signature from %s", src_ip)
+                continue
+
+            try:
+                nft_add(src_ip, port, ttl, binary=nft_bin)
+                accept_count += 1
+            except Exception:
+                logger.exception("nft add failed for %s:%d", src_ip, port)
+
+    except KeyboardInterrupt:
+        pass
+    finally:
+        shutdown_health()
+        logger.info("portkeyd stopped")
 
 
 if __name__ == "__main__":
-	main()
+    main()
