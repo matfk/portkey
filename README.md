@@ -1,26 +1,6 @@
 # portkey
 
-Open a remote port by sending a signed UDP packet.
-
-## How it works
-
-```
-client                         server
-+--------------+ UDP knock    +------------------+
-| portkey.py   |------------->| portkeyd         |
-| (Ed25519)    |  92 bytes    |   raw socket     |
-+--------------+              |   verify signature
-                              |   nft add element
-                              |   port open (ttl)
-                              +------------------+
-```
-
-The client builds `port || ttl || timestamp || nonce` (28 bytes), signs it with
-an Ed25519 private key (64 byte signature), and sends the 92-byte blob in a
-single UDP datagram.  The server captures it on a raw `AF_PACKET` socket
-(supports both IPv4 and IPv6), verifies the signature and timestamp, checks the
-nonce for replays, and adds the source IP + requested port to an nftables set
-with a timeout. No response is returned.
+Open a remote TCP port by sending a signed UDP packet.
 
 ## Quick start
 
@@ -28,24 +8,25 @@ with a timeout. No response is returned.
 pip install -r requirements.txt
 
 # Generate a keypair
+mkdir -p keys
 python -c "
 from nacl.signing import SigningKey
 sk = SigningKey.generate()
-open('portkey.pub', 'wb').write(bytes(sk.verify_key))
-open('portkey.key', 'wb').write(bytes(sk))
+open('keys/alice.pub', 'wb').write(bytes(sk.verify_key))
+open('alice.key', 'wb').write(bytes(sk))
 "
 
-# Move the *private* key to the client machine
+# Move the private key to the client machine
 mkdir -p ~/.config/portkey
-mv portkey.key ~/.config/portkey/key
+mv alice.key ~/.config/portkey/key
 ```
 
 Add the public key to `portkey.toml`:
 
 ```toml
 [[keys]]
-name = "my-machine"
-path = "portkey.pub"
+name = "alice"
+path = "/etc/portkey/keys/alice.pub"
 ```
 
 ## Server
@@ -56,8 +37,8 @@ sudo python3 -m server.main --config portkey.toml
 sudo python3 -m server.main --config portkey.toml --dry-run
 ```
 
-The server drops privileges to `nobody:nogroup` after opening the raw socket
-(keeping only `NET_RAW` + `NET_ADMIN` capabilities).
+The server runs as root inside the container. Capabilities are limited to
+`NET_RAW` + `NET_ADMIN` by Docker.
 
 ### Health check
 
@@ -68,7 +49,7 @@ echo | nc -U /var/run/portkey/health.sock
 ### Logging
 
 Rotating logs land in the directory configured as `server.logs` (default
-`logs/`).  Both a console handler (stderr) and a rotating file handler are
+`logs/`). Both a console handler (stderr) and a rotating file handler are
 active.
 
 ## Client
@@ -85,34 +66,27 @@ python3 client/portkey.py <host> 22 --ttl 30 --retries 5 --retry-delay 1.0
 docker compose up -d
 ```
 
-The container needs host networking and `NET_RAW` + `NET_ADMIN` capabilities;
-both are already configured in `docker-compose.yml`.  A Docker healthcheck
-pings the Unix health socket every 30 s.
+The container uses host networking and `NET_RAW` + `NET_ADMIN` capabilities.
+Both are in `docker-compose.yml`. A healthcheck pings the Unix socket every 30s.
 
 ## Configuration (`portkey.toml`)
 
 ```toml
 [server]
-database        = "portkey.db"          # SQLite nonce store
-max_clock_skew  = 60                    # seconds of allowed clock drift
-max_ttl         = 86400                 # cap client-requested TTL (24 h)
-cleanup_interval = 60                   # nonce DB cleanup interval
-logs            = "logs"                # rotating log directory
+database        = "/etc/portkey/portkey.db"
+max_clock_skew  = 60
+max_ttl         = 86400
+cleanup_interval = 60
+logs            = "/var/log/portkey"
 health_socket   = "/var/run/portkey/health.sock"
 nft_binary      = "nft"
-user            = "nobody"              # drop to this user after init
-group           = "nogroup"
 
 [logging]
-level           = "INFO"                # DEBUG, INFO, WARNING, ERROR
+level           = "INFO"
 
 [[keys]]
 name = "alice"
-path = "alice.pub"
-
-[[keys]]
-name = "bob"
-path = "bob.pub"
+path = "/etc/portkey/keys/alice.pub"
 ```
 
 ## Client options
