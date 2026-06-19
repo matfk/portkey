@@ -1,14 +1,39 @@
-import os
-import server.config as config
+from __future__ import annotations
 
-INFO_LOG_FILE = "info.log"
+import logging
+from logging.handlers import RotatingFileHandler
+
+from server.config import Config
+
+logger = logging.getLogger("portkey")
 
 
-def log_info(*args, sep: str = " "):
-	logs_path = config.config.server.logs
-	if not logs_path.exists():
-		os.makedirs(logs_path)
+def setup_logging(config: Config) -> None:
+    root = logging.getLogger()
+    root.setLevel(logging.DEBUG)
+    root.handlers.clear()
 
-	info_path = logs_path.joinpath(INFO_LOG_FILE)
-	with open(info_path, "a") as f:
-		f.write(sep.join(str(a) for a in args) + "\n")
+    level = getattr(logging, config.logging.level.upper(), logging.INFO)
+    fmt = logging.Formatter(fmt=config.logging.format, datefmt=config.logging.datefmt)
+
+    console = logging.StreamHandler()
+    console.setLevel(level)
+    console.setFormatter(fmt)
+    root.addHandler(console)
+
+    try:
+        logs_path = config.server.logs
+        logs_path.mkdir(parents=True, exist_ok=True)
+
+        file_handler = RotatingFileHandler(
+            logs_path / "portkeyd.log",
+            maxBytes=10 * 1024 * 1024,
+            backupCount=5,
+        )
+        file_handler.setLevel(logging.DEBUG)
+        file_handler.setFormatter(fmt)
+        root.addHandler(file_handler)
+    except OSError as exc:
+        logger.warning("Cannot open log file: %s", exc)
+
+    logger.info("Logging initialized (level=%s, logs=%s)", config.logging.level, config.server.logs)
