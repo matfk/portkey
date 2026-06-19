@@ -16,7 +16,7 @@ from pathlib import Path
 from nacl.exceptions import BadSignatureError
 
 from protocol import PKT_BODY_LEN
-from server.config import Config, get_config, load_config, validate_only
+from server.config import get_config, load_config, validate_only
 from server.database import Database
 from server.logging import setup_logging
 from server.nftables import add as nft_add
