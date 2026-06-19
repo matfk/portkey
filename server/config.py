@@ -71,7 +71,7 @@ def get_config() -> Config:
     return loaded_config
 
 
-def initialize_config(path: Path) -> Config:
+def load_config(path: Path) -> Config:
     global loaded_config
     loaded_config = Config.load(path)
     return loaded_config

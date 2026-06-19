@@ -16,7 +16,7 @@ from pathlib import Path
 from nacl.exceptions import BadSignatureError
 
 from protocol import PKT_BODY_LEN
-from server.config import Config, get_config, initialize_config, validate_only
+from server.config import Config, get_config, load_config, validate_only
 from server.database import Database
 from server.logging import setup_logging
 from server.nftables import add as nft_add
@@ -91,7 +91,7 @@ def main() -> None:
         sys.exit(1)
 
     try:
-        initialize_config(args.config)
+        load_config(args.config)
     except Exception as exc:
         print(f"portkeyd: failed to load config: {exc}", file=sys.stderr)
         sys.exit(1)
