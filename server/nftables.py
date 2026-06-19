@@ -36,27 +36,21 @@ table {TABLE_FAMILY} {TABLE_NAME} {{
 def nft(binary: str, *args: str, check: bool = True, input: bytes | None = None) -> None:
     cmd = [binary, *args]
     logger.debug("Running: %s", " ".join(cmd))
-    subprocess.run(cmd, capture_output=True, check=check, input=input)
-
-
-def table_exists(binary: str) -> bool:
-    result = subprocess.run(
-        [binary, "list", "table", TABLE_FAMILY, TABLE_NAME],
-        capture_output=True,
-        text=True,
-    )
-    return result.returncode == 0
+    result = subprocess.run(cmd, capture_output=True, check=False, input=input)
+    if result.returncode != 0:
+        stderr = result.stderr.decode().strip()
+        logger.error("nft command failed: %s", stderr)
+        if check:
+            raise subprocess.CalledProcessError(result.returncode, cmd, result.stdout, result.stderr)
 
 
 def setup(binary: str = "nft") -> None:
-    if table_exists(binary):
-        logger.info("nftables table '%s %s' already exists; reusing",
-                     TABLE_FAMILY, TABLE_NAME)
-        for set_name in (SET_V4, SET_V6):
-            nft(binary, "flush", "set", TABLE_FAMILY, TABLE_NAME, set_name)
-    else:
-        logger.info("Creating nftables table '%s %s'", TABLE_FAMILY, TABLE_NAME)
-        nft(binary, "-f", "/dev/stdin", input=RULESET.encode())
+    subprocess.run(
+        [binary, "delete", "table", TABLE_FAMILY, TABLE_NAME],
+        capture_output=True,
+    )
+    logger.info("Creating nftables table '%s %s'", TABLE_FAMILY, TABLE_NAME)
+    nft(binary, "-f", "/dev/stdin", input=RULESET.encode())
 
 
 def teardown(binary: str = "nft") -> None:
