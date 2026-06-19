@@ -64,21 +64,24 @@ def health_listener(sock_path: Path, stop_event: threading.Event) -> None:
     except OSError:
         pass
 
-
-def main() -> None:
-    p = argparse.ArgumentParser(description="portkeyd. port-knocking daemon")
-    p.add_argument(
+def parse_args():
+    parser = argparse.ArgumentParser(description="portkeyd. port-knocking daemon")
+    parser.add_argument(
         "--config",
         type=Path,
         default=Path("portkey.toml"),
         help="Path to TOML configuration file (default: portkey.toml)",
     )
-    p.add_argument(
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Validate configuration and exit without starting the daemon",
     )
-    args = p.parse_args()
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
 
     if args.dry_run:
         ok = validate_only(args.config)
